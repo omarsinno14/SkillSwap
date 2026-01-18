@@ -1,0 +1,398 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+  MODERATOR
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum IntentType {
+  SWAP
+  MENTOR
+  POD
+  REQUEST
+}
+
+enum PostStatus {
+  ACTIVE
+  ARCHIVED
+  REMOVED
+}
+
+enum PodJoinPolicy {
+  OPEN
+  REQUEST
+}
+
+enum PodStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ConversationType {
+  DIRECT
+  POD
+}
+
+enum ListingType {
+  SKILLSWAP
+  SERVICE
+  MENTORSHIP
+}
+
+enum ListingStatus {
+  ACTIVE
+  PAUSED
+  SOLD
+  REMOVED
+}
+
+enum BookingStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+enum NotificationType {
+  MESSAGE
+  COMMENT
+  POD_REQUEST
+  BOOKING
+  REPORT
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+}
+
+enum TargetType {
+  USER
+  POST
+  MESSAGE
+  POD
+  LISTING
+}
+
+enum AdminActionType {
+  BAN_USER
+  SUSPEND_USER
+  DELETE_POST
+  DELETE_LISTING
+  RESOLVE_REPORT
+}
+
+model User {
+  id             String     @id @default(uuid())
+  email          String     @unique
+  passwordHash   String?
+  oauthProvider  String?
+  role           Role       @default(USER)
+  status         UserStatus @default(ACTIVE)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  profile        Profile?
+  preferences    Preferences?
+  availability   Availability?
+  posts          Post[]
+  comments       Comment[]
+  likes          Like[]
+  saves          Save[]
+  podMemberships PodMember[]
+  podCheckins    PodCheckin[]
+  conversations  ConversationMember[]
+  messages       Message[]
+  listings       Listing[]
+  mentorProfile  MentorProfile?
+  bookingsRequested BookingRequest[] @relation("BookingRequester")
+  bookingsReceived  BookingRequest[] @relation("BookingMentor")
+  notifications  Notification[]
+  reports        Report[]
+  blocksInitiated Block[] @relation("Blocker")
+  blocksReceived  Block[] @relation("Blocked")
+  adminActions   AdminAction[] @relation("AdminActor")
+  matchLogs      MatchLog[]
+}
+
+model Profile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  displayName     String
+  username        String   @unique
+  bio             String   @default("")
+  avatarUrl       String?
+  locationCity    String?
+  locationLat     Float?
+  locationLng     Float?
+  timezone        String
+  tags            String[]
+  skillsOffered   String[]
+  skillsWanted    String[]
+  goals           String[]
+  privacyLevel    String   @default("public")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@index([locationCity])
+}
+
+model Preferences {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  radiusKm           Int      @default(25)
+  intentPrefs        IntentType[]
+  tagPrefs           String[]
+  notificationPrefs  String[]
+  onboardingComplete Boolean @default(false)
+  user               User     @relation(fields: [userId], references: [id])
+}
+
+model Availability {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  weekly    Json
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Post {
+  id            String     @id @default(uuid())
+  authorId      String
+  intentType    IntentType
+  title         String
+  body          String
+  tags          String[]
+  location      String?
+  schedule      String?
+  commitment    String?
+  imageUrl      String?
+  status        PostStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  author        User       @relation(fields: [authorId], references: [id])
+  comments      Comment[]
+  likes         Like[]
+  saves         Save[]
+  matchLogs     MatchLog[]
+
+  @@index([intentType, createdAt])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  postId    String
+  authorId  String
+  body      String
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id])
+  author    User     @relation(fields: [authorId], references: [id])
+}
+
+model Like {
+  id        String   @id @default(uuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([postId, userId])
+}
+
+model Save {
+  id        String   @id @default(uuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([postId, userId])
+}
+
+model Pod {
+  id          String        @id @default(uuid())
+  ownerId     String
+  name        String
+  description String
+  tags        String[]
+  maxMembers  Int
+  joinPolicy  PodJoinPolicy @default(REQUEST)
+  schedule    String?
+  status      PodStatus     @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  owner       User          @relation(fields: [ownerId], references: [id])
+  members     PodMember[]
+  checkins    PodCheckin[]
+}
+
+model PodMember {
+  id           String   @id @default(uuid())
+  podId        String
+  userId       String
+  role         String   @default("member")
+  joinedAt     DateTime @default(now())
+  streak       Int      @default(0)
+  lastCheckinAt DateTime?
+  pod          Pod      @relation(fields: [podId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@unique([podId, userId])
+}
+
+model PodCheckin {
+  id            String   @id @default(uuid())
+  podId         String
+  userId        String
+  weekStart     DateTime
+  text          String
+  proofImageUrl String?
+  createdAt     DateTime @default(now())
+  pod           Pod      @relation(fields: [podId], references: [id])
+  user          User     @relation(fields: [userId], references: [id])
+}
+
+model Conversation {
+  id        String            @id @default(uuid())
+  type      ConversationType
+  podId     String?
+  createdAt DateTime          @default(now())
+  members   ConversationMember[]
+  messages  Message[]
+  pod       Pod?              @relation(fields: [podId], references: [id])
+}
+
+model ConversationMember {
+  id             String   @id @default(uuid())
+  conversationId String
+  userId         String
+  joinedAt       DateTime @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  user           User     @relation(fields: [userId], references: [id])
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  senderId       String
+  body           String
+  createdAt      DateTime @default(now())
+  readReceipts   Json
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  sender         User     @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+}
+
+model Listing {
+  id          String        @id @default(uuid())
+  ownerId     String
+  type        ListingType
+  title       String
+  description String
+  tags        String[]
+  price       Float?
+  swapTerms   String?
+  location    String?
+  status      ListingStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  owner       User          @relation(fields: [ownerId], references: [id])
+
+  @@index([type, createdAt])
+}
+
+model MentorProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  topics        String[]
+  rate          Float?
+  bioAddendum   String
+  verifiedFlag  Boolean  @default(false)
+  user          User     @relation(fields: [userId], references: [id])
+}
+
+model BookingRequest {
+  id            String       @id @default(uuid())
+  mentorId      String
+  requesterId   String
+  proposedTimes Json
+  status        BookingStatus @default(PENDING)
+  createdAt     DateTime      @default(now())
+  mentor        User          @relation("BookingMentor", fields: [mentorId], references: [id])
+  requester     User          @relation("BookingRequester", fields: [requesterId], references: [id])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  data      Json
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model Report {
+  id         String      @id @default(uuid())
+  reporterId String
+  targetType TargetType
+  targetId   String
+  reason     String
+  status     ReportStatus @default(OPEN)
+  createdAt  DateTime    @default(now())
+  reporter   User        @relation(fields: [reporterId], references: [id])
+}
+
+model Block {
+  id         String   @id @default(uuid())
+  blockerId  String
+  blockedId  String
+  createdAt  DateTime @default(now())
+  blocker    User     @relation("Blocker", fields: [blockerId], references: [id])
+  blocked    User     @relation("Blocked", fields: [blockedId], references: [id])
+
+  @@unique([blockerId, blockedId])
+}
+
+model AdminAction {
+  id         String         @id @default(uuid())
+  actorId    String
+  actionType AdminActionType
+  meta       Json
+  createdAt  DateTime       @default(now())
+  actor      User           @relation("AdminActor", fields: [actorId], references: [id])
+}
+
+model MatchLog {
+  id        String   @id @default(uuid())
+  userId    String
+  postId    String
+  score     Int
+  reasons   String[]
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  post      Post     @relation(fields: [postId], references: [id])
+
+  @@index([userId, createdAt])
+}
